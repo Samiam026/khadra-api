@@ -2,6 +2,7 @@ import os
 import io
 import json
 import base64
+import urllib.request
 import numpy as np
 import tensorflow as tf
 from fastapi import FastAPI, File, UploadFile
@@ -11,18 +12,24 @@ from PIL import Image
 import cv2
 import uvicorn
 
-app = FastAPI(title="Green DZ - Score-CAM Plant API")
+# --- الإعدادات والروابط ---
+# استبدل هذا الرابط بالرابط الذي نسخته من الـ Release إذا كان مختلفاً
+MODEL_URL = "https://github.com/Samiam026/khadra-api/releases/download/v1/PlantDisease_EfficientNetB0_LKAM.keras"
+MODEL_PATH = "model.keras"
+JSON_PATH = "class_map.json"
 
+app = FastAPI(title="Khadra DZ - Plant Disease API")
 
+# إعدادات CORS للسماح للتطبيق بالاتصال بالـ API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
+# --- تعريف الطبقات المخصصة ---
 @tf.keras.utils.register_keras_serializable(package="Custom")
 class LKAM(tf.keras.layers.Layer):
     def __init__(self, channels=None, **kwargs):
@@ -39,7 +46,17 @@ class LKAM(tf.keras.layers.Layer):
         config.update({"channels": self.channels})
         return config
 
+# --- وظيفة تحميل الموديل تلقائياً ---
+def download_model_if_not_exists():
+    if not os.path.exists(MODEL_PATH):
+        print("⏳ Downloading model from GitHub... This might take a few minutes.")
+        try:
+            urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+            print("✅ Model downloaded successfully!")
+        except Exception as e:
+            print(f"❌ Error downloading model: {e}")
 
+# --- وظائف Score-CAM للتفسير البصري ---
 def get_score_cam(img_input, model):
     try:
         base_model = model.get_layer('efficientnetb0')
@@ -50,7 +67,7 @@ def get_score_cam(img_input, model):
         features = features[0]
         heatmap = np.zeros(features.shape[:2], dtype=np.float32)
         
-    
+        # استخدام أول 16 خريطة مميزات لتسريع العملية في السيرفر
         for i in range(min(features.shape[-1], 16)): 
             feature_map = features[:, :, i]
             upsampled = cv2.resize(feature_map, (224, 224))
@@ -79,15 +96,13 @@ def process_heatmap(img_pil, heatmap):
     _, buff = cv2.imencode('.jpg', result)
     return base64.b64encode(buff).decode('utf-8')
 
-
-MODEL_PATH = "PlantDisease_EfficientNetB0_LKAM.keras"
-JSON_PATH = "class_map.json"
-
+# --- تحميل الموديل والبيانات ---
 model = None
 classes = []
 
+download_model_if_not_exists()
+
 try:
-   
     model = tf.keras.models.load_model(MODEL_PATH, custom_objects={'LKAM': LKAM}, compile=False)
     with open(JSON_PATH, 'r', encoding='utf-8') as f:
         class_map = json.load(f)
@@ -95,6 +110,11 @@ try:
     print("✅ System Ready with Score-CAM")
 except Exception as e:
     print(f"❌ Load Error: {e}")
+
+# --- المسارات (Endpoints) ---
+@app.get("/")
+def home():
+    return {"message": "Khadra DZ API is Running!"}
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
@@ -119,8 +139,6 @@ async def predict(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-
 if __name__ == "__main__":
-   
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
