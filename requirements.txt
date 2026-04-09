@@ -1,7 +1,6 @@
 fastapi
 uvicorn
-tensorflow-cpu
-opencv-python-headless
+tensorflow
 pillow
+opencv-python-headless
 numpy
-python-multipart
