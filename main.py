@@ -12,15 +12,14 @@ from PIL import Image
 import cv2
 import uvicorn
 
-# --- الإعدادات والروابط ---
-# استبدل هذا الرابط بالرابط الذي نسخته من الـ Release إذا كان مختلفاً
+
 MODEL_URL = "https://github.com/Samiam026/khadra-api/releases/download/v1/PlantDisease_EfficientNetB0_LKAM.keras"
 MODEL_PATH = "model.keras"
 JSON_PATH = "class_map.json"
 
 app = FastAPI(title="Khadra DZ - Plant Disease API")
 
-# إعدادات CORS للسماح للتطبيق بالاتصال بالـ API
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,7 +28,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- تعريف الطبقات المخصصة ---
+
 @tf.keras.utils.register_keras_serializable(package="Custom")
 class LKAM(tf.keras.layers.Layer):
     def __init__(self, channels=None, **kwargs):
@@ -46,7 +45,7 @@ class LKAM(tf.keras.layers.Layer):
         config.update({"channels": self.channels})
         return config
 
-# --- وظيفة تحميل الموديل تلقائياً ---
+
 def download_model_if_not_exists():
     if not os.path.exists(MODEL_PATH):
         print("⏳ Downloading model from GitHub... This might take a few minutes.")
@@ -56,7 +55,7 @@ def download_model_if_not_exists():
         except Exception as e:
             print(f"❌ Error downloading model: {e}")
 
-# --- وظائف Score-CAM للتفسير البصري ---
+
 def get_score_cam(img_input, model):
     try:
         base_model = model.get_layer('efficientnetb0')
@@ -67,7 +66,7 @@ def get_score_cam(img_input, model):
         features = features[0]
         heatmap = np.zeros(features.shape[:2], dtype=np.float32)
         
-        # استخدام أول 16 خريطة مميزات لتسريع العملية في السيرفر
+    
         for i in range(min(features.shape[-1], 16)): 
             feature_map = features[:, :, i]
             upsampled = cv2.resize(feature_map, (224, 224))
@@ -96,7 +95,7 @@ def process_heatmap(img_pil, heatmap):
     _, buff = cv2.imencode('.jpg', result)
     return base64.b64encode(buff).decode('utf-8')
 
-# --- تحميل الموديل والبيانات ---
+
 model = None
 classes = []
 
@@ -111,7 +110,7 @@ try:
 except Exception as e:
     print(f"❌ Load Error: {e}")
 
-# --- المسارات (Endpoints) ---
+
 @app.get("/")
 def home():
     return {"message": "Khadra DZ API is Running!"}
